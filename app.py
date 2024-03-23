@@ -1,192 +1,100 @@
+# Import necessary libraries
 import plotly.express as px
-from shiny.express import input, ui
-from shiny import render
-from shinywidgets import render_plotly
-import pandas as pd
+from shiny.express import input, ui, render
+from shinywidgets import render_widget, render_plotly
 import seaborn as sns
-import palmerpenguins  # This package provides the Palmer Penguins dataset
+from ipyleaflet import Map
+from palmerpenguins import load_penguins
 from shiny import reactive
 
-# built-in function to load the Palmer Penguins dataset
-penguins_df = palmerpenguins.load_penguins()
+# Load the Palmer Penguins dataset into a Pandas DataFrame
+penguins_df = load_penguins()
 
-# Page name
-ui.page_opts(title="JB Penguins Data", fillable=True)
-
-color_map = {"Adelie": "blue", "Gentoo": "green", "Chinstrap": "red"}
-
-
-# sidebar for user interaction
-with ui.sidebar(open="open"):
-    ui.h2("Sidebar")
-    ui.input_selectize(
-        "selected_attribute",
-        "Select Plotly Attribute",
-        ["bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g"],
-    )
-
-    # Create a numeric input for the number of Plotly histogram bins
-    ui.input_numeric("plotly_bin_count", "Number of plotly bins", 30)
-
-    # Creates slider input for Seaborn bins
-    ui.input_slider(
-        "seaborn_bin_slider",
-        "Number of Bins",
-        1,
-        50,
-        10,
-    )
-
-    # Use ui.input_checkbox_group() to create a checkbox group input to filter the species
-    ui.input_checkbox_group(
-        "selected_species_list",
-        "Species in Scatterplot",
-        ["Adelie", "Gentoo", "Chinstrap"],
-        selected=["Adelie"],
-        inline=True,
-    )
-
-    # Use ui.input_checkbox_group() to create a checkbox group input to filter the islands
-    ui.input_checkbox_group(
-        "selected_islands",
-        "Islands in Graphs",
-        ["Torgersen", "Biscoe", "Dream"],
-        selected=["Torgersen", "Biscoe", "Dream"],
-        inline=True,
-    )
-
-# Use ui.hr() to add a horizontal rule to the sidebar
-ui.hr()
-
-# Use ui.a() to add a hyperlink to the sidebar
-ui.a(
-    "JBTallgrass GitHub",
-    href="https://github.com/JBtallgrass/cintel-02-data",
-    target="_blank",
-)
-
-# Data table showing the penguin dataset Include 2 cards with a table and a grid
-with ui.layout_columns(col_widths=(4, 8)):
-    with ui.card(full_screen=True):  # Full screen option
-        ui.h3("Penguins Data Table")
-
-        @render.data_frame
-        def render_penguins_table():
-            return filtered_data()
-
-    with ui.card(full_screen=True):
-        ui.h3("Penguins Data Grid")
-
-        @render.data_frame
-        def render_penguins_grid():
-            return filtered_data()
-
-
-# Use ui.hr() to add a horizontal rule to the sidebar
-ui.hr()
-
-# Creates a Plotly Histogram showing all species
-with ui.layout_columns():
-    with ui.card(full_screen=True):
-        ui.h3("All Species Histogram-Plotly")
-
-        @render_plotly
-        def plotly_histogram():
-            return px.histogram(
-                filtered_data(),
-                x="species",
-                color="species",
-                color_discrete_map=color_map,
-            )
-
-    with ui.card(full_screen=True):
-        ui.h3("All Species ScatterPlot-plotly")
-
-        @render_plotly
-        def plotly_scatterplot():
-            return px.scatter(
-                filtered_data(),
-                title="All Species ScatterPlot-plotly",
-                x="body_mass_g",
-                y="bill_length_mm",
-                color="species",
-                symbol="species",
-                color_discrete_map=color_map,
-            )
-
-    # Creates a Seaborn Histogram showing all species
-
-    with ui.card(full_screen=True):
-        ui.card_header("Seaborn Histogram")
-
-        palette = sns.color_palette("Set3")  # Choose a palette with 3 colors
-
-        @render.plot(alt="Seaborn Histogram")
-        def seaborn_histogram():
-            histplot = sns.histplot(
-                filtered_data(),
-                x="body_mass_g",
-                bins=input.seaborn_bin_count(),
-                hue="species",
-                palette=palette,
-            )
-            histplot.set_title("Palmer Penguins")
-            histplot.set_xlabel("Body Mass (g)")  # Set x-axis label
-            histplot.set_ylabel("Count")  # Set y-axis label
-            return histplot
-
-    with ui.card(full_screen=True):
-        ui.h3("Penguin Population by Island")
-
-        @render_plotly()
-        def island_population_chart():
-            filtered = filtered_data()
-            island_counts = filtered["island"].value_counts().reset_index()
-            island_counts.columns = ["island", "count"]
-            return px.bar(
-                island_counts,
-                x="island",
-                y="count",
-                title="Penguin Population by Island",
-                labels={"count": "Number of Penguins"},
-                color="island",
-                color_discrete_map=color_map,
-            )
-
-    # Creates a Plotly Boxplot showing all species and islands
-    with ui.card(full_screen=True):
-        ui.card_header("Plotly Boxplot: Species")
-
-        @render_plotly
-        def plotly_boxplot():
-            return px.box(
-                filtered_data(),
-                x="species",
-                y=input.selected_attribute(),
-                color="island",  # Add a color parameter to differentiate boxplots by island
-                title="Penguins Boxplot",
-                labels={
-                    "species": "Species",
-                    input.selected_attribute(): input.selected_attribute()
-                    .replace("_", " ")
-                    .title(),
-                },
-            )
-
-
-# --------------------------------------------------------
-# Reactive calculations and effects
-# --------------------------------------------------------
+# Define the UI sidebar and main content items
+ui.page_opts(title="Penguin Data Toba")
 
 # Add a reactive calculation to filter the data
-# By decorating the function with @reactive, we can use the function to filter the data
-# The function will be called whenever an input functions used to generate that output changes.
-# Any output that depends on the reactive function (e.g., filtered_data()) will be updated when the data changes.
-
-
 @reactive.calc
 def filtered_data():
-    return penguins_df[
-        (penguins_df["species"].isin(input.selected_species_list()))
-        & (penguins_df["island"].isin(input.selected_islands()))
-    ]
+    return penguins_df[penguins_df["species"].isin(input.selected_species_list())]
+
+# Add a Shiny UI sidebar for user interaction
+with ui.sidebar(open="open"):
+    ui.h2("Sidebar")
+    ui.input_selectize("selected_attribute", "Choose a Column", ["bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g"])
+    ui.input_numeric("plotly_bin_count", "Number of Plotly Histogram Bins", value=20)
+    ui.input_slider("seaborn_bin_count", "Number of Seaborn Bins", 1, 20, 5)
+    ui.input_checkbox_group("selected_species_list", "Select Species", ["Adelie", "Gentoo", "Chinstrap"], selected=["Adelie"], inline=True)
+    ui.input_text("Text", "Enter text", "Hello Shiny")
+    ui.hr()
+    ui.a("GitHub", href="https://github.com/Adeyemitoba/cintel-02-data.git", target="_blank")
+
+# Add your layout for the main content area below
+with ui.layout_columns():
+    with ui.card(full_screen=True):
+        ui.card_header("Plotly Histogram: Penguin Mass")
+
+        @render_widget
+        def plot():
+            scatterplot = px.histogram(
+                data_frame=filtered_data(),  # Use filtered_data instead of penguins_df
+                x=input.selected_attribute(),  # Use the selected attribute here
+                nbins=input.plotly_bin_count(),
+            ).update_layout(
+                title={"text": "Penguin Mass", "x": 0.5},
+                yaxis_title="Count",
+                xaxis_title="Selected Attribute",  # Update the x-axis title
+            )
+
+            return scatterplot
+
+    with ui.card(full_screen=True):
+        ui.card_header("Seaborn Histogram: Penguin Mass")
+
+        @render.plot(alt="A Seaborn histogram on penguin body mass in grams.")
+        def seaborn_histogram():
+            ax = sns.histplot(data=filtered_data(), x=input.selected_attribute(), bins=input.seaborn_bin_count())  
+            ax.set_title("Palmer Penguins")
+            ax.set_xlabel("Selected Attribute")  # Update the x-axis label
+            ax.set_ylabel("Count")
+            return ax
+
+    with ui.card(full_screen=True):
+        ui.h2("Penguin Data Table")
+
+        @render.data_frame
+        def penguins_datatable():
+            return render.DataTable(filtered_data())
+
+        ui.h2("Penguin Data Grid")
+
+        @render.data_frame
+        def penguins_datagrid():
+            return render.DataGrid(filtered_data())
+
+    with ui.card(full_screen=True):
+        ui.card_header("Plotly Scatterplot: Species")
+        
+        @render_plotly
+        def plotly_scatterplot():
+            scatterplot = px.scatter(filtered_data(), x="bill_length_mm", y="bill_depth_mm", color="species")
+            return scatterplot
+
+    with ui.card(full_screen=True):
+        ui.card_header("An ipyleaflet Map")
+
+        @render_widget  
+        def map():
+            return Map(center=(50.6252978589571, 0.34580993652344), zoom=3)
+
+    with ui.card(full_screen=True):
+        ui.card_header("Input Text")
+
+        @render.text
+        def text():
+            return input.Text()
+
+# Reactive calculations and effects
+@reactive.calc
+def filtered_data():
+    return penguins_df[penguins_df["species"].isin(input.selected_species_list())]
